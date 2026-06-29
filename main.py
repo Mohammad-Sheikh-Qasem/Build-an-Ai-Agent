@@ -1,3 +1,4 @@
+from prompts import system_prompt
 from google.genai import types
 import argparse
 import os
@@ -26,6 +27,9 @@ client = genai.Client(api_key=api_key)
 response = client.models.generate_content(
     model="gemini-2.5-flash",
     contents=messages
+    config=types.GenerateContentConfig(
+        system_instruction=system_prompt
+    ),
 )
 
 prompt_tokens = response.usage_metadata.prompt_token_count
