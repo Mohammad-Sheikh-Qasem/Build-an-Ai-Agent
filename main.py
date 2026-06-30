@@ -1,20 +1,11 @@
-from call_function import available_functions
-from prompts import system_prompt
-from google.genai import types
 import argparse
+import sys
 import os
 from dotenv import load_dotenv
 from google import genai
-
-parser = argparse.ArgumentParser(description="Chatbot")
-
-parser.add_argument('user_prompt', help = "return a text for the prompt", type = str)
-parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
-args = parser.parse_args()
-
-messages: list[types.Content] = [
-    types.Content(role="user", parts=[types.Part(text=args.user_prompt)])
-]
+from google.genai import types
+from call_function import available_functions, call_function
+from prompts import system_prompt
 
 load_dotenv()
 
@@ -25,37 +16,58 @@ if api_key is None:
 
 client = genai.Client(api_key=api_key)
 
-response = client.models.generate_content(
-    model="gemini-2.5-flash",
-    contents=messages,
-    config=types.GenerateContentConfig(
-        system_instruction=system_prompt,
-        tools=[available_functions],
-        temperature=0,
-    ),
-)
+parser = argparse.ArgumentParser(description="Chatbot")
+parser.add_argument("user_prompt", type=str)
+parser.add_argument("--verbose", action="store_true")
+args = parser.parse_args()
 
-prompt_tokens = response.usage_metadata.prompt_token_count
-response_tokens = response.usage_metadata.candidates_token_count
+messages = [
+    types.Content(
+        role="user",
+        parts=[types.Part(text=args.user_prompt)]
+    )
+]
 
-if args.verbose:
-      print(f"User prompt: {args.user_prompt}")
-    #print(f"Prompt tokens: {prompt_tokens}.")
+function_results = []
 
-#print(f"Response tokens: {response.text}.")
-      print(f"Prompt tokens: {prompt_tokens}")
-#print(response.text)
+for _ in range(20):
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=messages,
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            tools=[available_functions],
+            temperature=0,
+        ),
+    )
 
-      print(f"Response tokens: {response_tokens}")
-if response.function_calls:
-    for function_call in response.function_calls:
-        print(f"Calling function: {function_call.name}({function_call.args})")
-else:
+    if response.candidates:
+        for candidate in response.candidates:
+            messages.append(candidate.content)
+
+    if response.function_calls:
+        function_results = []
+
+        for function_call in response.function_calls:
+            result = call_function(function_call, verbose=args.verbose)
+
+            tool_response = result.parts[0].function_response
+
+            if not tool_response or not tool_response.response:
+                raise Exception("Empty function response")
+
+            function_results.append(result.parts[0])
+
+        messages.append(
+            types.Content(
+                role="user",
+                parts=function_results
+            )
+        )
+        continue
+
     print(response.text)
-#def main():
-#    print("Hello from build-an-ai-agent!")
+    break
 
-
-#if __name__ == "__main__":
-#    main()
-
+else:
+    raise Exception("Agent did not finish in 20 iterations")
