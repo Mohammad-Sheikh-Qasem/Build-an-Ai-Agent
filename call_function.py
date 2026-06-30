@@ -1,8 +1,16 @@
 from google.genai import types
+from collections.abc import Callable
+
+from functions.get_files_info import get_files_info
+from functions.get_file_content import get_file_content
+from functions.write_file import write_file
+from functions.run_python_file import run_python_file
+
 from functions.write_file import schema_write_file
 from functions.run_python_file import schema_run_python_file
 from functions.get_file_content import schema_get_file_content
 from functions.get_files_info import schema_get_files_info
+
 
 available_functions = types.Tool(
     function_declarations=[
@@ -12,3 +20,51 @@ available_functions = types.Tool(
         schema_write_file,
     ],
 )
+
+
+def call_function(function_call: types.FunctionCall, verbose: bool = False) -> types.Content:
+
+    function_name = function_call.name or ""
+    args = dict(function_call.args) if function_call.args else {}
+
+    args["working_directory"] = "./calculator"
+
+    if verbose:
+        print(f"Calling function: {function_name}({function_call.args})")
+    else:
+        print(f" - Calling function: {function_name}")
+
+    function_map: dict[str, Callable[..., str]] = {
+        "get_files_info": get_files_info,
+        "get_file_content": get_file_content,
+        "write_file": write_file,
+        "run_python_file": run_python_file,
+    }
+
+    if function_name not in function_map:
+        return types.Content(
+            role="tool",
+            parts=[
+                types.Part.from_function_response(
+                    name=function_name,
+                    response={"error": f"Unknown function: {function_name}"},
+                )
+            ],
+        )
+
+    function_result = function_map[function_name](**args)
+
+    result = types.Content(
+        role="tool",
+        parts=[
+            types.Part.from_function_response(
+                name=function_name,
+                response={"result": function_result},
+            )
+        ],
+    )
+
+    if verbose:
+        print(f"-> {result.parts[0].function_response.response}")
+
+    return result
