@@ -1,3 +1,4 @@
+from call_function import available_functions
 from prompts import system_prompt
 from google.genai import types
 import argparse
@@ -29,6 +30,7 @@ response = client.models.generate_content(
     contents=messages,
     config=types.GenerateContentConfig(
         system_instruction=system_prompt,
+        tools=[available_functions],
         temperature=0,
     ),
 )
@@ -45,7 +47,11 @@ if args.verbose:
 #print(response.text)
 
       print(f"Response tokens: {response_tokens}")
-print(response.text)
+if response.function_calls:
+    for function_call in response.function_calls:
+        print(f"Calling function: {function_call.name}({function_call.args})")
+else:
+    print(response.text)
 #def main():
 #    print("Hello from build-an-ai-agent!")
 
